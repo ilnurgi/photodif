@@ -2,7 +2,7 @@
 фрейм с операциями, копирование .....
 """
 
-from tkinter import Frame, SOLID, Button, X
+from tkinter import Frame, SOLID, Button, X, messagebox
 
 import os
 
@@ -49,28 +49,33 @@ class OperationsFrame(Frame):
         size = 0
         # объекты в папке
         files_dict = {}
-        for fl in os.listdir(path):
-            fl_path = os.path.join(path, fl)
-            if not os.path.exists(fl_path):
-                continue
-            if os.path.isdir(fl_path):
-                _files, _count, _size = self.get_dir_stat(fl_path)
-                count += _count
-                size += _size
-                if files:
-                    files_dict[fl] = {
-                        'size': _size,
-                        'count': _count
-                    }
-            else:
-                count += 1
-                _size = os.stat(fl_path).st_size
-                size += _size
-                if files:
-                    files_dict[fl] = {
-                        'size': _size,
-                        'count': 1
-                    }
+        try:
+            listdir = os.listdir(path)
+        except Exception as err:
+            messagebox.showerror('Error', str(err))
+        else:            
+            for fl in listdir:
+                fl_path = os.path.join(path, fl)
+                if not os.path.exists(fl_path):
+                    continue
+                if os.path.isdir(fl_path):
+                    _files, _count, _size = self.get_dir_stat(fl_path)
+                    count += _count
+                    size += _size
+                    if files:
+                        files_dict[fl] = {
+                            'size': _size,
+                            'count': _count
+                        }
+                else:
+                    count += 1
+                    _size = os.stat(fl_path).st_size
+                    size += _size
+                    if files:
+                        files_dict[fl] = {
+                            'size': _size,
+                            'count': 1
+                        }
 
         return files_dict, count, size
 
