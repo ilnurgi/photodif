@@ -49,19 +49,22 @@ class OperationsFrame(Frame):
         size = 0
         # объекты в папке
         files_dict = {}
+        # ошибки
+        errors = []
         try:
             listdir = os.listdir(path)
         except Exception as err:
-            messagebox.showerror('Error', str(err))
+            errors.append(str(err))
         else:            
             for fl in listdir:
                 fl_path = os.path.join(path, fl)
                 if not os.path.exists(fl_path):
                     continue
                 if os.path.isdir(fl_path):
-                    _files, _count, _size = self.get_dir_stat(fl_path)
+                    _files, _count, _size, _errors = self.get_dir_stat(fl_path)
                     count += _count
                     size += _size
+                    errors.extend(_errors)
                     if files:
                         files_dict[fl] = {
                             'size': _size,
@@ -77,14 +80,14 @@ class OperationsFrame(Frame):
                             'count': 1
                         }
 
-        return files_dict, count, size
+        return files_dict, count, size, errors
 
     def compare(self):
         root_left = self.w_left.var_current_path.get()
-        files_dict_left, count_left, size_left = self.get_dir_stat(root_left, True)
+        files_dict_left, count_left, size_left, errors_left = self.get_dir_stat(root_left, True)
 
         root_right = self.w_right.var_current_path.get()
-        files_dict_right, count_right, size_right = self.get_dir_stat(root_right, True)
+        files_dict_right, count_right, size_right, errors_right = self.get_dir_stat(root_right, True)
 
         self.w_left.var_counts.set('{0}/{1}'.format(count_left, size_left))
         self.w_right.var_counts.set('{0}/{1}'.format(count_right, size_right))
@@ -100,3 +103,6 @@ class OperationsFrame(Frame):
                 elif f_d_2[fl] != size:
                     item_index = w_1.listbox_items.index(fl)
                     w_1.w_listbox.itemconfig(item_index, bg='red')
+
+        errors_left.extend(errors_right)        
+        messagebox.showerror('Errors', '\n'.join(errors_left))

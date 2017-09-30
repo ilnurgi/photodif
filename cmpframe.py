@@ -172,7 +172,7 @@ class CmpFrame(Frame):
         w_om_h = 0.03
 
         w_label_cp_x = w_om_w
-        w_label_cp_w = 0.75
+        w_label_cp_w = 0.7
         w_label_cp_h = w_om_h
 
         w_lb_y = w_om_h
@@ -381,6 +381,7 @@ class CmpFrame(Frame):
 
         self.w_listbox.delete(0, END)
         self.w_listbox.insert(END, *self.listbox_items)
+        self.var_counts.set('')
 
         return True
 
