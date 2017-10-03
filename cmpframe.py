@@ -2,11 +2,13 @@
 фрейм окна для вывода списка файлов и переименовании
 """
 
-import string
 import os
+import string
+import subprocess
 
 from datetime import datetime
-from tkinter import Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, SINGLE, messagebox, OptionMenu, Button
+from tkinter import (
+    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, SINGLE, messagebox, OptionMenu, Button, Menu, simpledialog)
 
 from PIL import Image, ImageTk, ExifTags
 
@@ -80,6 +82,33 @@ class CmpFrame(Frame):
         self.w_btn_dt_digitized = Button(self, text='Переименовать в ->')
         self.w_btn_dt = Button(self, text='Переименовать в ->')
 
+        self.w_popup = Menu(self)
+        self.w_popup.add_command(
+            label='Открыть файл',
+            command=lambda: subprocess.call(
+                ['explorer',
+                 os.path.join(self.var_current_path.get(), self.var_current_file.get())]))
+        self.w_popup.add_command(
+            label='Открыть папку',
+            command=lambda: subprocess.call(
+                ['explorer', self.var_current_path.get()]))
+        self.w_popup.add_command(
+            label='Показать файл в папке',
+            command=lambda: subprocess.call(
+                ['explorer',
+                 '/select,',
+                 os.path.join(self.var_current_path.get(), self.var_current_file.get())]))
+        self.w_popup.add_separator()
+        self.w_popup.add_command(label='Переименовать', command=self.rename_custom)
+        self.w_popup.add_command(
+            label='Копировать',
+            command=lambda: subprocess.call(
+                ['explorer',
+                 '/select,',
+                 os.path.join(self.var_current_path.get(), self.var_current_file.get())]))
+        self.w_popup.add_separator()
+        self.w_popup.add_command(label='Сравнить', command=self.app.compare)
+
         self.load_list()
 
     def w_config(self):
@@ -146,6 +175,9 @@ class CmpFrame(Frame):
 
         self.w_listbox.bind(
             '<<ListboxSelect>>', self.current_image_change)
+
+        self.w_listbox.bind(
+            '<Button-3>', self.popup)
 
         self.w_scrollbar.config(
             command=self.w_listbox.yview,
@@ -358,17 +390,16 @@ class CmpFrame(Frame):
         """
         загружает список для списка файлов
         """
-        path = path or self.var_current_path.get()
+        current_path = path or self.var_current_path.get()
 
         try:
-            list_dir = os.listdir(path)
+            list_dir = os.listdir(current_path)
         except PermissionError as err:
             messagebox.showerror('PermissionError', str(err))
             return False
         else:
             items_list = []
             files = []
-            current_path = self.var_current_path.get()
             for item in list_dir:
                 if os.path.isdir(os.path.join(current_path, item)):
                     items_list.append(item)
@@ -409,28 +440,33 @@ class CmpFrame(Frame):
             if os.path.isdir(path):
                 if self.load_list(path):
                     self.var_current_path.set(path)
+                    self.reset_renames()
+                    self.current_image_change(None)
+            else:
+                subprocess.call(
+                    ['explorer',
+                     os.path.join(self.var_current_path.get(), self.var_current_file.get())])
 
     def current_image_change(self, event):
         """
         обработчик выбора элемента в списке
         """
+        if event is None:
+            self.set_image(None)
+            return
+
         self.var_current_file.set('')
-        selected_items = self.w_listbox.curselection()
+        selected_index, selected_file_name = self.get_selected_item()
+        if selected_index and selected_file_name:
+            if any(selected_file_name.lower().endswith(ext) for ext in AVAILABLE_FILE_ENDS):
+                path = os.path.join(
+                    self.var_current_path.get(),
+                    selected_file_name
+                )
 
-        if selected_items:
-            selected_index = selected_items[0]
-
-            if selected_index != 0:
-                selected_file_name = self.listbox_items[selected_index]
-                if any(selected_file_name.lower().endswith(ext) for ext in AVAILABLE_FILE_ENDS):
-                    path = os.path.join(
-                        self.var_current_path.get(),
-                        selected_file_name
-                    )
-
-                    if os.path.isfile(path):
-                        if self.set_image(path):
-                            self.var_current_file.set(selected_file_name)
+                if os.path.isfile(path):
+                    if self.set_image(path):
+                        self.var_current_file.set(selected_file_name)
 
     def current_path_root_change(self, new_value):
         """
@@ -440,25 +476,18 @@ class CmpFrame(Frame):
         if os.path.isdir(new_value):
             if self.load_list(new_value):
                 self.var_current_path.set(new_value)
+                self.reset_renames()
 
     def set_image(self, path):
         """
         грузим картинку на форму
         """
 
-        stat = os.stat(path)
-
-        self.var_dt_create.set(datetime.fromtimestamp(stat.st_ctime).strftime(DATE_TIME_FORMAT))
-        self.var_dt_modify.set(datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT))
-        self.var_dt_original.set('')
-        self.var_dt_digitized.set('')
-        self.var_dt.set('')
-
-        self.var_dt_create_new.set('')
-        self.var_dt_modify_new.set('')
-        self.var_dt_original_new.set('')
-        self.var_dt_digitized_new.set('')
-        self.var_dt_new.set('')
+        self.reset_renames()
+        if path is None:
+            self.w_label_image.config(image=None)
+            self.w_label_image.image = None
+            return
 
         try:
             image = Image.open(path)
@@ -466,6 +495,10 @@ class CmpFrame(Frame):
             self.w_label_image.config(image=None)
             self.w_label_image.image = None
             return
+
+        stat = os.stat(path)
+        self.var_dt_create.set(datetime.fromtimestamp(stat.st_ctime).strftime(DATE_TIME_FORMAT))
+        self.var_dt_modify.set(datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT))
 
         height = self.w_label_image.winfo_height()
         width = self.w_label_image.winfo_width()
@@ -548,15 +581,77 @@ class CmpFrame(Frame):
 
         src = os.path.join(self.var_current_path.get(), name_src)
         dst = os.path.join(self.var_current_path.get(), name_dst)
+        self.rename_file(src, dst)
 
+    def popup(self, event):
+        """
+        отображаем контекстное меню
+        :param event:
+        :return:
+        """
+        try:
+            self.w_popup.tk_popup(event.x_root, event.y_root, 0)
+        finally:
+            self.w_popup.grab_release()
+
+    def reset_renames(self):
+        """
+        сбрасывает переменные для переименования
+        :return:
+        """
+        self.var_dt_create.set('')
+        self.var_dt_modify.set('')
+        self.var_dt_original.set('')
+        self.var_dt_digitized.set('')
+        self.var_dt.set('')
+
+        self.var_dt_create_new.set('')
+        self.var_dt_modify_new.set('')
+        self.var_dt_original_new.set('')
+        self.var_dt_digitized_new.set('')
+        self.var_dt_new.set('')
+
+    def rename_custom(self):
+        """
+        частное переименование
+        :param event:
+        :return:
+        """
+        selected_index, selected_file_name = self.get_selected_item()
+        if selected_index and selected_file_name:
+            new_val = simpledialog.askstring('Введите новое название для файла', selected_file_name)
+            if new_val:
+                src = os.path.join(self.var_current_path.get(), selected_file_name)
+                dst = os.path.join(self.var_current_path.get(), new_val)
+                self.rename_file(src, dst)
+                self.load_list()
+
+    def get_selected_item(self):
+        """
+        возвращает выбранный индекс и название файла
+        :return:
+        """
+        selected_index = selected_file_name = None
+
+        selected_items = self.w_listbox.curselection()
+
+        if selected_items:
+            selected_index = selected_items[0]
+
+            if selected_index != 0:
+                selected_file_name = self.listbox_items[selected_index]
+
+        return selected_index, selected_file_name
+
+    def rename_file(self, src, dst):
         if messagebox.askyesno(
             'Переименовать файл',
-            'Вы уверены?\n{0}\n{1}'.format(name_src, name_dst)
+            'Вы уверены?\n{0}\n{1}'.format(src, dst)
         ):
             if os.path.exists(dst):
                 messagebox.showerror(
                     'Ошибка переименования',
-                    'Файл ({0}) уже существует'.format(name_dst))
+                    'Файл ({0}) уже существует'.format(dst))
             else:
                 try:
                     os.rename(src, dst)

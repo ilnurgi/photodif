@@ -1,7 +1,8 @@
-from tkinter import Tk
+from tkinter import Tk, messagebox
+
+import os
 
 from cmpframe import CmpFrame
-from operframe import OperationsFrame
 from settings import DEBUG, DIR_START_LEFT, DIR_START_RIGHT, write as settings_write, VERSION, SOFT_NAME
 
 
@@ -18,7 +19,6 @@ class App(object):
 
         self.w_left_frame = CmpFrame(self.w_window, self, debug=DEBUG, start_path=DIR_START_LEFT)
         self.w_right_frame = CmpFrame(self.w_window, self, debug=DEBUG, start_path=DIR_START_RIGHT)
-        self.w_center_frame = OperationsFrame(self.w_window, self.w_left_frame, self.w_right_frame, debug=DEBUG)
 
         self.w_window_width_max = None
         self.w_window_height_max = None
@@ -41,7 +41,6 @@ class App(object):
         """
         self.w_left_frame.w_config()
         self.w_right_frame.w_config()
-        self.w_center_frame.w_config()
 
         self.w_window.wm_state('zoomed')
         self.w_window.title('{0}: {1}'.format(SOFT_NAME, VERSION))
@@ -54,21 +53,15 @@ class App(object):
         """
         self.w_left_frame.w_layout()
         self.w_right_frame.w_layout()
-        self.w_center_frame.w_layout()
 
-        cmp_frame_w = 0.45
+        cmp_frame_w = 0.5
 
         w_left_frame_x = 0
         w_left_frame_y = 0
         w_left_frame_h = 1
         w_left_frame_w = cmp_frame_w
 
-        w_center_frame_x = w_left_frame_w
-        w_center_frame_y = 0
-        w_center_frame_h = 1
-        w_center_frame_w = 1 - 2 * cmp_frame_w
-
-        w_right_frame_x = w_left_frame_w + w_center_frame_w
+        w_right_frame_x = cmp_frame_w
         w_right_frame_y = 0
         w_right_frame_h = 1
         w_right_frame_w = cmp_frame_w
@@ -78,12 +71,6 @@ class App(object):
             rely=w_left_frame_y,
             relwidth=w_left_frame_w,
             relheight=w_left_frame_h)
-
-        self.w_center_frame.place(
-            relx=w_center_frame_x,
-            rely=w_center_frame_y,
-            relwidth=w_center_frame_w,
-            relheight=w_center_frame_h)
 
         self.w_right_frame.place(
             relx=w_right_frame_x,
@@ -108,6 +95,80 @@ class App(object):
         self.w_config()
         self.w_layout()
         self.w_window.mainloop()
+
+    def get_dir_stat(self, path, files=False):
+        """
+        рекурсивный сборщик статистики
+        :param path:
+        :param files:
+        :return:
+        """
+        # количество объектов в папка
+        count = 0
+        # общий размер объектов
+        size = 0
+        # объекты в папке
+        files_dict = {}
+        # ошибки
+        errors = []
+        try:
+            listdir = os.listdir(path)
+        except Exception as err:
+            errors.append(str(err))
+        else:
+            for fl in listdir:
+                fl_path = os.path.join(path, fl)
+                if not os.path.exists(fl_path):
+                    continue
+                if os.path.isdir(fl_path):
+                    _files, _count, _size, _errors = self.get_dir_stat(fl_path)
+                    count += _count
+                    size += _size
+                    errors.extend(_errors)
+                    if files:
+                        files_dict[fl] = {
+                            'size': _size,
+                            'count': _count
+                        }
+                else:
+                    count += 1
+                    _size = os.stat(fl_path).st_size
+                    size += _size
+                    if files:
+                        files_dict[fl] = {
+                            'size': _size,
+                            'count': 1
+                        }
+
+        return files_dict, count, size, errors
+
+    def compare(self):
+        root_left = self.w_left_frame.var_current_path.get()
+        files_dict_left, count_left, size_left, errors_left = self.get_dir_stat(root_left, True)
+
+        root_right = self.w_right_frame.var_current_path.get()
+        files_dict_right, count_right, size_right, errors_right = self.get_dir_stat(root_right, True)
+
+        self.w_left_frame.var_counts.set('{0}/{1}'.format(count_left, size_left))
+        self.w_right_frame.var_counts.set('{0}/{1}'.format(count_right, size_right))
+
+        for w_1, w_2, f_d_1, f_d_2 in (
+                (self.w_left_frame, self.w_right_frame, files_dict_left, files_dict_right),
+                (self.w_right_frame, self.w_left_frame, files_dict_right, files_dict_left)
+        ):
+            for fl, size in f_d_1.items():
+                if fl not in f_d_2:
+                    item_index = w_1.listbox_items.index(fl)
+                    w_1.w_listbox.itemconfig(item_index, bg='green')
+                elif f_d_2[fl] != size:
+                    item_index = w_1.listbox_items.index(fl)
+                    w_1.w_listbox.itemconfig(item_index, bg='red')
+
+        errors_left.extend(errors_right)
+        if errors_left:
+            messagebox.showerror('Errors', '\n'.join(errors_left))
+        else:
+            messagebox.showinfo('Compare', 'DONE')
 
 
 app = App()
