@@ -3,12 +3,13 @@
 """
 
 import os
+import shutil
 import string
 import subprocess
 
 from datetime import datetime
 from tkinter import (
-    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, SINGLE, messagebox, OptionMenu, Button, Menu, simpledialog)
+    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, SINGLE, messagebox, OptionMenu, Button, Menu, simpledialog, EXTENDED)
 
 from PIL import Image, ImageTk, ExifTags
 
@@ -40,7 +41,7 @@ class CmpFrame(Frame):
         self.var_dt_digitized_new = StringVar(value='')
         self.var_dt_new = StringVar(value='')
 
-        self.var_current_path = StringVar(value=start_path)
+        self.var_current_path = StringVar(value='')
         self.var_current_file = StringVar(value='')
         self.var_current_path_root = StringVar()
         roots = []
@@ -51,7 +52,13 @@ class CmpFrame(Frame):
                 if start_path.lower().startswith(i):
                     self.var_current_path_root.set(i)
 
-        self.w_listbox = Listbox(self, selectmode=SINGLE)
+        for _ in range(5):
+            if os.path.exists(start_path):
+                self.var_current_path.set(start_path)
+            else:
+                start_path = os.path.dirname(start_path)
+
+        self.w_listbox = Listbox(self, selectmode=EXTENDED)
         self.w_label_current_path = Label(self, textvariable=self.var_current_path)
         self.w_label_image = Label(self)
         self.w_scrollbar = Scrollbar(self)
@@ -86,8 +93,9 @@ class CmpFrame(Frame):
         self.w_popup.add_command(
             label='Открыть файл',
             command=lambda: subprocess.call(
-                ['explorer',
-                 os.path.join(self.var_current_path.get(), self.var_current_file.get())]))
+                ['open',
+                '"{0}"'.format(
+                    os.path.join(self.var_current_path.get(), self.var_current_file.get()))]))
         self.w_popup.add_command(
             label='Открыть папку',
             command=lambda: subprocess.call(
@@ -100,12 +108,10 @@ class CmpFrame(Frame):
                  os.path.join(self.var_current_path.get(), self.var_current_file.get())]))
         self.w_popup.add_separator()
         self.w_popup.add_command(label='Переименовать', command=self.rename_custom)
-        self.w_popup.add_command(
-            label='Копировать',
-            command=lambda: subprocess.call(
-                ['explorer',
-                 '/select,',
-                 os.path.join(self.var_current_path.get(), self.var_current_file.get())]))
+        self.w_popup.add_command(label='Копировать', command=self.copy_file)
+        self.w_popup.add_command(label='Удалить', command=self.remove_file)
+        self.w_popup.add_separator()
+        self.w_popup.add_command(label='Переименовать массово из ORIGINAL', command=self.rename_all_original)
         self.w_popup.add_separator()
         self.w_popup.add_command(label='Сравнить', command=self.app.compare)
 
@@ -207,7 +213,11 @@ class CmpFrame(Frame):
         w_label_cp_w = 0.7
         w_label_cp_h = w_om_h
 
-        w_lb_y = w_om_h
+        #w_lb_image_y = w_om_h + w_lb_h
+        w_lb_image_y = w_om_h
+        w_lb_image_h = 0.5
+
+        w_lb_y = w_lb_image_y + w_lb_image_h
         w_lb_w = 0.98
         w_lb_h = 0.3
 
@@ -216,13 +226,10 @@ class CmpFrame(Frame):
         w_sb_w = 1 - w_lb_w
         w_sb_h = w_lb_h
 
-        w_lb_image_y = w_om_h + w_lb_h
-        w_lb_image_h = 0.5
-
         w_lbl_dt_w = 0.14
         w_lbl_dt_h = 0.034
 
-        w_lbl_dt_y1 = w_lb_image_y + w_lb_image_h
+        w_lbl_dt_y1 = w_lb_y + w_lb_h
 
         w_btn_w = 0.2
 
@@ -436,6 +443,10 @@ class CmpFrame(Frame):
                         self.var_current_path.get(),
                     )
                 )
+                for _ in range(5):
+                    if os.path.exists(path):
+                        break
+                    path = os.path.dirname(path)
 
             if os.path.isdir(path):
                 if self.load_list(path):
@@ -451,6 +462,7 @@ class CmpFrame(Frame):
         """
         обработчик выбора элемента в списке
         """
+        self.reset_renames()
         if event is None:
             self.set_image(None)
             return
@@ -458,15 +470,42 @@ class CmpFrame(Frame):
         self.var_current_file.set('')
         selected_index, selected_file_name = self.get_selected_item()
         if selected_index and selected_file_name:
-            if any(selected_file_name.lower().endswith(ext) for ext in AVAILABLE_FILE_ENDS):
-                path = os.path.join(
-                    self.var_current_path.get(),
-                    selected_file_name
-                )
+            path = os.path.join(
+                self.var_current_path.get(),
+                selected_file_name
+            )
+            if os.path.isfile(path):
+                self.var_current_file.set(selected_file_name)
+                if any(selected_file_name.lower().endswith(ext) for ext in AVAILABLE_FILE_ENDS):                
+                    self.set_image(path)                      
+                else:            
+                    stat = os.stat(path)
+                    self.var_dt_create.set(datetime.fromtimestamp(stat.st_ctime).strftime(DATE_TIME_FORMAT))
+                    self.var_dt_modify.set(datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT))
+                    for dt_from, dt_to in (
+                            (self.var_dt_create, self.var_dt_create_new),
+                            (self.var_dt_modify, self.var_dt_modify_new),
+                    ):
+                        try:
+                            rename_name = datetime.strptime(
+                                dt_from.get(), DATE_TIME_FORMAT
+                            ).strftime(DATE_TIME_FORMAT_NEW_FILE)
+                        except ValueError:
+                            try:
+                                rename_name = datetime.strptime(
+                                    dt_from.get(), DATE_TIME_FORMAT_EXIF
+                                ).strftime(
+                                    DATE_TIME_FORMAT_NEW_FILE)
+                            except ValueError:
+                                rename_name = None
 
-                if os.path.isfile(path):
-                    if self.set_image(path):
-                        self.var_current_file.set(selected_file_name)
+                        if rename_name:
+                            rename_name = '{0}_{1}{2}'.format(
+                                rename_name,
+                                stat.st_size,
+                                os.path.splitext(path)[-1]
+                            )
+                            dt_to.set(rename_name)
 
     def current_path_root_change(self, new_value):
         """
@@ -478,27 +517,76 @@ class CmpFrame(Frame):
                 self.var_current_path.set(new_value)
                 self.reset_renames()
 
+    def get_image_exif_dates(self, path: str or None):
+        """
+        возвращает объект изображения и даты из ексиф
+        """
+        image = dt_original = dt_digitized = dt = None
+
+        if path is None:
+            self.w_label_image.config(image=None)
+            self.w_label_image.image = None
+        else:
+            try:
+                image = Image.open(path)
+            except IOError:
+                self.w_label_image.config(image=None)
+                self.w_label_image.image = None
+            else:
+                try:
+                    exif_data = image._getexif()
+                except AttributeError:
+                    exif_data = None
+                if exif_data:
+                    dt_original = exif_data.get(EXIF_TAGS['DateTimeOriginal'])
+                    dt_digitized = exif_data.get(EXIF_TAGS['DateTimeDigitized'])
+                    dt = exif_data.get(EXIF_TAGS['DateTime'])
+
+        return image, dt_original, dt_digitized, dt
+
+    def get_rename_name(self, dt, size, path):
+        """
+        возвращает имя для переименования
+        """
+        try:
+            rename_name = datetime.strptime(
+                dt, DATE_TIME_FORMAT
+            ).strftime(DATE_TIME_FORMAT_NEW_FILE)
+        except ValueError:
+            try:
+                rename_name = datetime.strptime(
+                    dt, DATE_TIME_FORMAT_EXIF
+                ).strftime(
+                    DATE_TIME_FORMAT_NEW_FILE)
+            except ValueError:
+                rename_name = None
+        except TypeError:
+            rename_name = None
+
+        if rename_name:
+            rename_name = '{0}_{1}{2}'.format(
+                rename_name,
+                size,
+                os.path.splitext(path)[-1]
+            )
+        return rename_name
+
     def set_image(self, path):
         """
         грузим картинку на форму
         """
 
-        self.reset_renames()
-        if path is None:
+        image, date_exif_original, date_exif_digitized, date_exif = self.get_image_exif_dates(path)
+
+        if path is not None:
+            stat = os.stat(path)
+            self.var_dt_create.set(datetime.fromtimestamp(stat.st_ctime).strftime(DATE_TIME_FORMAT))
+            self.var_dt_modify.set(datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT))
+
+        if image is None:
             self.w_label_image.config(image=None)
             self.w_label_image.image = None
-            return
-
-        try:
-            image = Image.open(path)
-        except IOError:
-            self.w_label_image.config(image=None)
-            self.w_label_image.image = None
-            return
-
-        stat = os.stat(path)
-        self.var_dt_create.set(datetime.fromtimestamp(stat.st_ctime).strftime(DATE_TIME_FORMAT))
-        self.var_dt_modify.set(datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT))
+            return 
 
         height = self.w_label_image.winfo_height()
         width = self.w_label_image.winfo_width()
@@ -518,15 +606,9 @@ class CmpFrame(Frame):
         )
         self.w_label_image.image = image_photo
 
-        try:
-            exif_data = image._getexif()
-        except AttributeError:
-            exif_data = None
-
-        if exif_data:
-            self.var_dt_original.set(exif_data.get(EXIF_TAGS['DateTimeOriginal'], u'---'))
-            self.var_dt_digitized.set(exif_data.get(EXIF_TAGS['DateTimeDigitized'], u'---'))
-            self.var_dt.set(exif_data.get(EXIF_TAGS['DateTime'], u'---'))
+        self.var_dt_original.set(date_exif_original or u'---')
+        self.var_dt_digitized.set(date_exif_digitized or u'---')
+        self.var_dt.set(date_exif or u'---')
 
         for dt_from, dt_to in (
                 (self.var_dt_digitized, self.var_dt_digitized_new),
@@ -535,25 +617,8 @@ class CmpFrame(Frame):
                 (self.var_dt_create, self.var_dt_create_new),
                 (self.var_dt_modify, self.var_dt_modify_new),
         ):
-            try:
-                rename_name = datetime.strptime(
-                    dt_from.get(), DATE_TIME_FORMAT
-                ).strftime(DATE_TIME_FORMAT_NEW_FILE)
-            except ValueError:
-                try:
-                    rename_name = datetime.strptime(
-                        dt_from.get(), DATE_TIME_FORMAT_EXIF
-                    ).strftime(
-                        DATE_TIME_FORMAT_NEW_FILE)
-                except ValueError:
-                    rename_name = None
-
+            rename_name = self.get_rename_name(dt_from.get(), stat.st_size, path)
             if rename_name:
-                rename_name = '{0}_{1}{2}'.format(
-                    rename_name,
-                    stat.st_size,
-                    os.path.splitext(path)[-1]
-                )
                 dt_to.set(rename_name)
 
         return True
@@ -575,13 +640,13 @@ class CmpFrame(Frame):
             name_dst = ''
 
         name_src = self.var_current_file.get()
-
         if not name_src or not name_dst:
             return
 
         src = os.path.join(self.var_current_path.get(), name_src)
         dst = os.path.join(self.var_current_path.get(), name_dst)
         self.rename_file(src, dst)
+        self.load_list()
 
     def popup(self, event):
         """
@@ -643,6 +708,16 @@ class CmpFrame(Frame):
 
         return selected_index, selected_file_name
 
+    def get_selected_items(self) -> list:
+        """
+        возвращает список выбранных названий файлов
+        """
+        return [
+            self.listbox_items[selected_index]
+            for selected_index in self.w_listbox.curselection()
+            if selected_index != 0
+        ]
+
     def rename_file(self, src, dst):
         if messagebox.askyesno(
             'Переименовать файл',
@@ -659,5 +734,80 @@ class CmpFrame(Frame):
                     messagebox.showerror(
                         'Ошибка переименования',
                         str(err))
-                else:
-                    self.load_list()
+
+    def copy_file(self):
+        """
+        копирует выбранные файлы
+        """
+        for selected_file_name in self.get_selected_items():
+            self.app.copy_file(self, selected_file_name)
+
+    def remove_file(self):
+        """
+        удаялет файл
+        """
+        selected_index, selected_file_name = self.get_selected_item()
+        if selected_index:
+            path = os.path.join(self.var_current_path.get(), selected_file_name)
+            if os.path.exists(path):
+                if os.path.isdir(path):
+                    if messagebox.askyesno(
+                        'Удаление папки',
+                        'Удалить ПАПКУ?\n{0}'.format(path)
+                    ):
+                        try:
+                            shutil.rmtree(path)
+                        except Exception as err:
+                            messagebox.showerror(
+                                'Удаление папки',
+                                str(err)
+                            )
+                        else:
+                            self.load_list()
+                elif os.path.isfile(path):
+                    if messagebox.askyesno(
+                        'Удаление файла',
+                        'Удалить файл?\n{0}'.format(path)
+                    ):
+                        try:
+                            os.remove(path)
+                        except Exception as err:
+                            messagebox.showerror(
+                                'Удаление папки',
+                                str(err)
+                            )
+                        else:
+                            self.load_list()
+            else:
+                messagebox.showerror(
+                    'Удаление объекта',
+                    'Объекта не существует\n{0}'.format(path)
+                )
+
+    def rename_all_original(self):
+        """
+        массовое переименование из original
+        """
+        for index in self.w_listbox.curselection():
+            try:
+                selected_item = self.listbox_items[index]
+            except IndexError as err:
+                messagebox.showerror(
+                    'Ошибка',
+                    str(err)
+                )
+            else:
+                src = os.path.join(self.var_current_path.get(), selected_item)
+                image, dt_original, dt_digitized, dt = self.get_image_exif_dates(src)  
+                # необходимо освобождать файл, чтобы была возможность его переименовать
+                del image
+                rename_name = self.get_rename_name(
+                    dt_original, 
+                    os.stat(src).st_size,
+                    src)
+                if rename_name:                
+                    self.rename_file(
+                        src,
+                        os.path.join(self.var_current_path.get(), rename_name)
+                    )
+        self.load_list()

@@ -1,6 +1,7 @@
 from tkinter import Tk, messagebox
 
 import os
+import shutil
 
 from cmpframe import CmpFrame
 from settings import DEBUG, DIR_START_LEFT, DIR_START_RIGHT, write as settings_write, VERSION, SOFT_NAME
@@ -143,6 +144,12 @@ class App(object):
         return files_dict, count, size, errors
 
     def compare(self):
+        """
+        сравнивает списки файлов
+        """
+        self.w_left_frame.load_list()
+        self.w_right_frame.load_list()
+
         root_left = self.w_left_frame.var_current_path.get()
         files_dict_left, count_left, size_left, errors_left = self.get_dir_stat(root_left, True)
 
@@ -170,6 +177,38 @@ class App(object):
         else:
             messagebox.showinfo('Compare', 'DONE')
 
+    def copy_file(self, frame, selected_file_name):
+        """
+        копирует файл из одного фрейма в другой
+        """
+        if frame == self.w_left_frame:
+            src = os.path.join(self.w_left_frame.var_current_path.get(), selected_file_name)
+            dst = os.path.join(self.w_right_frame.var_current_path.get(), selected_file_name)
+        elif frame == self.w_right_frame:
+            src = os.path.join(self.w_right_frame.var_current_path.get(), selected_file_name)
+            dst = os.path.join(self.w_left_frame.var_current_path.get(), selected_file_name)
+        else:
+            return
+
+        if messagebox.askyesno(
+            'Копирование',
+            'Из\n{0}\nв\n{1}'.format(src, dst)
+        ):
+            if os.path.exists(dst):
+                messagebox.showerror(
+                    'Ошибка при копировании',
+                    'Указанный файл уже существует\n'.format(dst)
+                )
+            else:
+                try:
+                    shutil.copy2(src, dst)
+                except Exception as err:
+                    messagebox.showerror(
+                        'Ошибка при копировании',
+                        str(err)
+                    )
+                else:
+                    frame.load_list()
 
 app = App()
 app.start()

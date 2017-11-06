@@ -3,7 +3,7 @@ import os
 
 DEBUG = False
 
-VERSION = '0.0.1'
+VERSION = '0.0.2'
 SOFT_NAME = 'photodif'
 
 DIR_BASE = os.path.dirname(__file__)
