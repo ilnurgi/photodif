@@ -3,6 +3,7 @@
 """
 
 import os
+import re
 import shutil
 import string
 import subprocess
@@ -16,7 +17,10 @@ from PIL import Image, ImageTk, ExifTags
 from settings import AVAILABLE_FILE_ENDS, DATE_TIME_FORMAT, DATE_TIME_FORMAT_EXIF, DATE_TIME_FORMAT_NEW_FILE
 
 EXIF_TAGS = {v: k for k, v in ExifTags.TAGS.items()}
-
+NORMALIZE_RES = (
+    re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2}) (\d+)(\.\w+)'),
+    re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(\.\w+)'),
+)
 
 class CmpFrame(Frame):
 
@@ -114,6 +118,7 @@ class CmpFrame(Frame):
         self.w_popup.add_command(label='Переименовать массово из ORIGINAL', command=self.rename_all_original)
         self.w_popup.add_separator()
         self.w_popup.add_command(label='Сравнить', command=self.app.compare)
+        self.w_popup.add_command(label='Нормализовать имена', command=self.normalize)
 
         self.load_list()
 
@@ -810,4 +815,33 @@ class CmpFrame(Frame):
                         src,
                         os.path.join(self.var_current_path.get(), rename_name)
                     )
+        self.load_list()
+
+    def normalize(self):
+        """
+        нормализует имена файлов
+        превращает 2012-12-02.jpg -> 20121202.jpg
+        :return:
+        """
+        file_names = self.get_selected_items()
+        for file_name in file_names:
+            dst_file_name = None
+            for norm_re in NORMALIZE_RES:
+                match = norm_re.match(file_name)
+                if match:
+                    groups = match.groups()
+                    print(groups)
+                    if len(groups) == 8:
+                        dst_file_name = '{0}{1}{2}_{3}{4}{5}_{6}{7}'.format(*groups)
+                    elif len(groups) == 7:
+                        dst_file_name = '{0}{1}{2}_{3}{4}{5}{6}'.format(*groups)
+                    break
+            else:
+                # вышли без брейк
+                continue
+            if dst_file_name is not None:
+                self.rename_file(
+                    os.path.join(self.var_current_path.get(), file_name),
+                    os.path.join(self.var_current_path.get(), dst_file_name)
+                )
         self.load_list()
