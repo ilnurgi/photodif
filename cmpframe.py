@@ -18,7 +18,7 @@ from settings import AVAILABLE_FILE_ENDS, DATE_TIME_FORMAT, DATE_TIME_FORMAT_EXI
 
 EXIF_TAGS = {v: k for k, v in ExifTags.TAGS.items()}
 NORMALIZE_RES = (
-    re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2}) (\d+)(\.\w+)'),
+    re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})[\s_]*(\d+)(\.\w+)'),
     re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(\.\w+)'),
 )
 
@@ -115,6 +115,7 @@ class CmpFrame(Frame):
         self.w_popup.add_command(label='Копировать', command=self.copy_file)
         self.w_popup.add_command(label='Удалить', command=self.remove_file)
         self.w_popup.add_separator()
+        self.w_popup.add_command(label='Переименовать массово из ИЗМЕНЕНИЕ', command=self.rename_all_modify)
         self.w_popup.add_command(label='Переименовать массово из ORIGINAL', command=self.rename_all_original)
         self.w_popup.add_separator()
         self.w_popup.add_command(label='Сравнить', command=self.app.compare)
@@ -549,7 +550,7 @@ class CmpFrame(Frame):
 
         return image, dt_original, dt_digitized, dt
 
-    def get_rename_name(self, dt, size, path):
+    def get_rename_name(self, dt: str, size: int, path: str):
         """
         возвращает имя для переименования
         """
@@ -817,6 +818,37 @@ class CmpFrame(Frame):
                     )
         self.load_list()
 
+    def rename_all_modify(self):
+        """
+        массовое переименование из изменения
+        """
+        for index in self.w_listbox.curselection():
+            print(index)
+            try:
+                selected_item = self.listbox_items[index]
+            except IndexError as err:
+                messagebox.showerror(
+                    'Ошибка',
+                    str(err)
+                )
+            else:
+                print(selected_item)
+                src = os.path.join(self.var_current_path.get(), selected_item)
+                print(src)
+                stat = os.stat(src)
+                print(stat)
+                rename_name = self.get_rename_name(
+                    datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT),
+                    stat.st_size,
+                    src)
+                print(rename_name)
+                if rename_name:
+                    self.rename_file(
+                        src,
+                        os.path.join(self.var_current_path.get(), rename_name)
+                    )
+        self.load_list()
+
     def normalize(self):
         """
         нормализует имена файлов
@@ -830,7 +862,6 @@ class CmpFrame(Frame):
                 match = norm_re.match(file_name)
                 if match:
                     groups = match.groups()
-                    print(groups)
                     if len(groups) == 8:
                         dst_file_name = '{0}{1}{2}_{3}{4}{5}_{6}{7}'.format(*groups)
                     elif len(groups) == 7:
