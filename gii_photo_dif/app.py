@@ -3,8 +3,8 @@ from tkinter import Tk, messagebox
 import os
 import shutil
 
-from cmpframe import CmpFrame
-from settings import DEBUG, DIR_START_LEFT, DIR_START_RIGHT, write as settings_write, VERSION, SOFT_NAME
+from gii_photo_dif.cmpframe import CmpFrame
+from gii_photo_dif.settings import DEBUG, DIR_START_LEFT, DIR_START_RIGHT, write as settings_write, VERSION, SOFT_NAME
 
 
 class App(object):
@@ -144,11 +144,12 @@ class App(object):
         return files_dict, count, size, errors
 
     def compare(self):
-        """
-        сравнивает списки файлов
+        """сравнивает списки файлов
         """
         self.w_left_frame.load_list()
         self.w_right_frame.load_list()
+
+        errors = []
 
         root_left = self.w_left_frame.var_current_path.get()
         files_dict_left, count_left, size_left, errors_left = self.get_dir_stat(root_left, True)
@@ -159,21 +160,34 @@ class App(object):
         self.w_left_frame.var_counts.set('{0}/{1}'.format(count_left, size_left))
         self.w_right_frame.var_counts.set('{0}/{1}'.format(count_right, size_right))
 
-        for w_1, w_2, f_d_1, f_d_2 in (
-                (self.w_left_frame, self.w_right_frame, files_dict_left, files_dict_right),
-                (self.w_right_frame, self.w_left_frame, files_dict_right, files_dict_left)
-        ):
-            for fl, size in f_d_1.items():
-                if fl not in f_d_2:
-                    item_index = w_1.listbox_items.index(fl)
-                    w_1.w_listbox.itemconfig(item_index, bg='green')
-                elif f_d_2[fl] != size:
-                    item_index = w_1.listbox_items.index(fl)
-                    w_1.w_listbox.itemconfig(item_index, bg='red')
+        errors.extend(errors_left)
+        errors.extend(errors_right)
 
-        errors_left.extend(errors_right)
+        errors_right = errors_left = False
+
+        for widget_1, widget_2, files_1, files_2, errors_first in (
+                (self.w_left_frame, self.w_right_frame, files_dict_left, files_dict_right, True),
+                (self.w_right_frame, self.w_left_frame, files_dict_right, files_dict_left, False),
+        ):
+            for fl, size in files_1.items():
+                if fl not in files_2:
+                    item_index = widget_1.listbox_items.index(fl)
+                    widget_1.w_listbox.itemconfig(item_index, bg='green')
+                    errors_right = errors_right or widget_1 is self.w_left_frame
+                    errors_left = errors_left or widget_1 is self.w_right_frame
+                elif files_2[fl] != size:
+                    item_index = widget_1.listbox_items.index(fl)
+                    widget_1.w_listbox.itemconfig(item_index, bg='red')
+                    errors_right = errors_right or widget_1 is self.w_left_frame
+                    errors_left = errors_left or widget_1 is self.w_right_frame
+
+        if errors_right:
+            errors.append('RIGHT')
         if errors_left:
-            messagebox.showerror('Errors', '\n'.join(errors_left))
+            errors.append('LEFT')
+
+        if errors:
+            messagebox.showerror('Errors', '\n'.join(errors))
         else:
             messagebox.showinfo('Compare', 'DONE')
 

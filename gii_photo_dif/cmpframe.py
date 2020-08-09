@@ -1,5 +1,4 @@
-"""
-фрейм окна для вывода списка файлов и переименовании
+"""фрейм окна для вывода списка файлов и переименовании
 """
 
 import os
@@ -10,17 +9,18 @@ import subprocess
 
 from datetime import datetime
 from tkinter import (
-    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, SINGLE, messagebox, OptionMenu, Button, Menu, simpledialog, EXTENDED)
+    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, messagebox, OptionMenu, Button, Menu, simpledialog, EXTENDED)
 
 from PIL import Image, ImageTk, ExifTags
 
-from settings import AVAILABLE_FILE_ENDS, DATE_TIME_FORMAT, DATE_TIME_FORMAT_EXIF, DATE_TIME_FORMAT_NEW_FILE
+from gii_photo_dif.settings import AVAILABLE_FILE_ENDS, DATE_TIME_FORMAT, DATE_TIME_FORMAT_EXIF, DATE_TIME_FORMAT_NEW_FILE
 
 EXIF_TAGS = {v: k for k, v in ExifTags.TAGS.items()}
 NORMALIZE_RES = (
     re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})[\s_]*(\d+)(\.\w+)'),
     re.compile('(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(\.\w+)'),
 )
+
 
 class CmpFrame(Frame):
 
