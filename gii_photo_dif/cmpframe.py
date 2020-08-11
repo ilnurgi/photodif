@@ -8,8 +8,10 @@ import string
 import subprocess
 
 from datetime import datetime
+
 from tkinter import (
-    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, messagebox, OptionMenu, Button, Menu, simpledialog, EXTENDED)
+    Frame, SOLID, Listbox, Label, StringVar, END, Scrollbar, messagebox, OptionMenu, Button, Menu, simpledialog, EXTENDED
+)
 
 from PIL import Image, ImageTk, ExifTags
 
@@ -683,10 +685,7 @@ class CmpFrame(Frame):
         self.var_dt_new.set('')
 
     def rename_custom(self):
-        """
-        частное переименование
-        :param event:
-        :return:
+        """частное переименование
         """
         selected_index, selected_file_name = self.get_selected_item()
         if selected_index and selected_file_name:
@@ -715,8 +714,7 @@ class CmpFrame(Frame):
         return selected_index, selected_file_name
 
     def get_selected_items(self) -> list:
-        """
-        возвращает список выбранных названий файлов
+        """возвращает список выбранных названий файлов
         """
         return [
             self.listbox_items[selected_index]
@@ -724,33 +722,60 @@ class CmpFrame(Frame):
             if selected_index != 0
         ]
 
-    def rename_file(self, src, dst):
-        if messagebox.askyesno(
+    @staticmethod
+    def rename_file(src: str, dst: str, ask_yes_no: bool = True):
+        """переименовывает файл
+        :param src: исходный путь
+        :param dst: путь назначения
+        :param ask_yes_no: проверить
+        :return:
+        """
+
+        if ask_yes_no and not messagebox.askyesno(
             'Переименовать файл',
             'Вы уверены?\n{0}\n{1}'.format(src, dst)
         ):
-            if os.path.exists(dst):
+            return
+
+        if os.path.exists(dst):
+            messagebox.showerror(
+                'Ошибка переименования',
+                'Файл ({0}) уже существует'.format(dst),
+            )
+        else:
+            try:
+                os.rename(src, dst)
+            except Exception as err:
                 messagebox.showerror(
                     'Ошибка переименования',
-                    'Файл ({0}) уже существует'.format(dst))
-            else:
-                try:
-                    os.rename(src, dst)
-                except Exception as err:
-                    messagebox.showerror(
-                        'Ошибка переименования',
-                        str(err))
+                    str(err),
+                )
 
     def copy_file(self):
+        """копирует выбранные файлы
         """
-        копирует выбранные файлы
-        """
-        for selected_file_name in self.get_selected_items():
-            self.app.copy_file(self, selected_file_name)
+
+        copy_all = messagebox.askyesno(
+            'Копирование',
+            'Скопировать все сразу?',
+        )
+        file_names = self.get_selected_items()
+        file_names_len = len(file_names)
+        self.app.log(f'выбрано: {file_names_len} файлов')
+
+        step = 0
+        for file_name in file_names:
+            step += 1
+            self.app.log(f'copy {step}/{file_names_len}')
+
+            self.app.copy_file(self, file_name, ask_yes_no=not copy_all)
+        self.load_list()
+
+        self.app.log_clear()
+        self.app.log('copy done')
 
     def remove_file(self):
-        """
-        удаялет файл
+        """удаялет файл
         """
         selected_index, selected_file_name = self.get_selected_item()
         if selected_index:
@@ -759,21 +784,21 @@ class CmpFrame(Frame):
                 if os.path.isdir(path):
                     if messagebox.askyesno(
                         'Удаление папки',
-                        'Удалить ПАПКУ?\n{0}'.format(path)
+                        'Удалить ПАПКУ?\n{0}'.format(path),
                     ):
                         try:
                             shutil.rmtree(path)
                         except Exception as err:
                             messagebox.showerror(
                                 'Удаление папки',
-                                str(err)
+                                str(err),
                             )
                         else:
                             self.load_list()
                 elif os.path.isfile(path):
                     if messagebox.askyesno(
                         'Удаление файла',
-                        'Удалить файл?\n{0}'.format(path)
+                        'Удалить файл?\n{0}'.format(path),
                     ):
                         try:
                             os.remove(path)
@@ -787,73 +812,89 @@ class CmpFrame(Frame):
             else:
                 messagebox.showerror(
                     'Удаление объекта',
-                    'Объекта не существует\n{0}'.format(path)
+                    'Объекта не существует\n{0}'.format(path),
                 )
 
     def rename_all_original(self):
+        """массовое переименование из original
         """
-        массовое переименование из original
-        """
-        for index in self.w_listbox.curselection():
-            try:
-                selected_item = self.listbox_items[index]
-            except IndexError as err:
-                messagebox.showerror(
-                    'Ошибка',
-                    str(err)
+
+        current_path = self.var_current_path.get()
+
+        file_names = self.get_selected_items()
+        file_names_len = len(file_names)
+
+        self.app.log(f'выбрано: {file_names_len} файлов')
+
+        ask_yes_no_mass = messagebox.askyesno(
+            'Переименовать все файлы?',
+            'Автоматический'
+        )
+        step = 0
+        for file_name in file_names:
+            step += 1
+            self.app.log(f'rename {step}/{file_names_len}')
+
+            src = os.path.join(current_path, file_name)
+            image, dt_original, dt_digitized, dt = self.get_image_exif_dates(src)
+            # необходимо освобождать файл, чтобы была возможность его переименовать
+            del image
+            rename_name = self.get_rename_name(
+                dt_original,
+                os.stat(src).st_size,
+                src,
+            )
+            if rename_name:
+                self.rename_file(
+                    src,
+                    os.path.join(self.var_current_path.get(), rename_name),
+                    ask_yes_no=not ask_yes_no_mass,
                 )
-            else:
-                src = os.path.join(self.var_current_path.get(), selected_item)
-                image, dt_original, dt_digitized, dt = self.get_image_exif_dates(src)  
-                # необходимо освобождать файл, чтобы была возможность его переименовать
-                del image
-                rename_name = self.get_rename_name(
-                    dt_original, 
-                    os.stat(src).st_size,
-                    src)
-                if rename_name:                
-                    self.rename_file(
-                        src,
-                        os.path.join(self.var_current_path.get(), rename_name)
-                    )
         self.load_list()
+
+        self.app.log_clear()
+        self.app.log('rename done')
 
     def rename_all_modify(self):
+        """массовое переименование из изменения
         """
-        массовое переименование из изменения
-        """
-        for index in self.w_listbox.curselection():
-            print(index)
-            try:
-                selected_item = self.listbox_items[index]
-            except IndexError as err:
-                messagebox.showerror(
-                    'Ошибка',
-                    str(err)
+        current_path = self.var_current_path.get()
+
+        file_names = self.get_selected_items()
+        file_names_len = len(file_names)
+
+        self.app.log(f'выбрано: {file_names_len} файлов')
+
+        ask_yes_no_mass = messagebox.askyesno(
+            'Переименовать все файлы?',
+            'Автоматический'
+        )
+        step = 0
+        for file_name in file_names:
+            step += 1
+            self.app.log(f'rename {step}/{file_names_len}')
+
+            src = os.path.join(current_path, file_name)
+            stat = os.stat(src)
+            rename_name = self.get_rename_name(
+                datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT),
+                stat.st_size,
+                src,
+            )
+            if rename_name:
+                self.rename_file(
+                    src,
+                    os.path.join(self.var_current_path.get(), rename_name),
+                    ask_yes_no=not ask_yes_no_mass,
                 )
-            else:
-                print(selected_item)
-                src = os.path.join(self.var_current_path.get(), selected_item)
-                print(src)
-                stat = os.stat(src)
-                print(stat)
-                rename_name = self.get_rename_name(
-                    datetime.fromtimestamp(stat.st_mtime).strftime(DATE_TIME_FORMAT),
-                    stat.st_size,
-                    src)
-                print(rename_name)
-                if rename_name:
-                    self.rename_file(
-                        src,
-                        os.path.join(self.var_current_path.get(), rename_name)
-                    )
         self.load_list()
 
+        self.app.log_clear()
+        self.app.log('rename done')
+
     def normalize(self):
-        """
-        нормализует имена файлов
+        """нормализует имена файлов
         превращает 2012-12-02.jpg -> 20121202.jpg
-        :return:
         """
         file_names = self.get_selected_items()
         for file_name in file_names:

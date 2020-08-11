@@ -1,7 +1,10 @@
-from tkinter import Tk, messagebox
+"""приложения для сравнивания каталогов с фотографиями и видео
+"""
 
 import os
 import shutil
+
+from tkinter import Tk, messagebox, Text, END, Scrollbar
 
 from gii_photo_dif.cmpframe import CmpFrame
 from gii_photo_dif.settings import DEBUG, DIR_START_LEFT, DIR_START_RIGHT, write as settings_write, VERSION, SOFT_NAME
@@ -20,6 +23,9 @@ class App(object):
 
         self.w_left_frame = CmpFrame(self.w_window, self, debug=DEBUG, start_path=DIR_START_LEFT)
         self.w_right_frame = CmpFrame(self.w_window, self, debug=DEBUG, start_path=DIR_START_RIGHT)
+
+        self.w_logs_text = Text(self.w_window)
+        self.w_logs_scroll = Scrollbar(self.w_window)
 
         self.w_window_width_max = None
         self.w_window_height_max = None
@@ -48,40 +54,65 @@ class App(object):
         self.w_window.bind("<Configure>", self.configure_event)
 
     def w_layout(self):
-        """
-        раскидываем виджеты по окну
-        :return:
+        """раскидываем виджеты по окну
         """
         self.w_left_frame.w_layout()
         self.w_right_frame.w_layout()
 
         cmp_frame_w = 0.5
+        cmp_frame_h = 0.9
 
         w_left_frame_x = 0
         w_left_frame_y = 0
-        w_left_frame_h = 1
+        w_left_frame_h = cmp_frame_h
         w_left_frame_w = cmp_frame_w
 
         w_right_frame_x = cmp_frame_w
         w_right_frame_y = 0
-        w_right_frame_h = 1
+        w_right_frame_h = cmp_frame_h
         w_right_frame_w = cmp_frame_w
+
+        w_logs_text_x = 0
+        w_logs_text_y = cmp_frame_h
+        w_logs_text_h = 1 - cmp_frame_h
+        w_logs_text_w = 0.95
+
+        w_logs_scroll_x = w_logs_text_w
+        w_logs_scroll_y = cmp_frame_h
+        w_logs_scroll_h = w_logs_text_h
+        w_logs_scroll_w = 1 - w_logs_text_w
 
         self.w_left_frame.place(
             relx=w_left_frame_x,
             rely=w_left_frame_y,
             relwidth=w_left_frame_w,
-            relheight=w_left_frame_h)
+            relheight=w_left_frame_h,
+        )
 
         self.w_right_frame.place(
             relx=w_right_frame_x,
             rely=w_right_frame_y,
             relwidth=w_right_frame_w,
-            relheight=w_right_frame_h)
+            relheight=w_right_frame_h,
+        )
+
+        self.w_logs_text.place(
+            relx=w_logs_text_x,
+            rely=w_logs_text_y,
+            relwidth=w_logs_text_w,
+            relheight=w_logs_text_h,
+        )
+        self.w_logs_scroll.place(
+            relx=w_logs_scroll_x,
+            rely=w_logs_scroll_y,
+            relwidth=w_logs_scroll_w,
+            relheight=w_logs_scroll_h,
+        )
+        self.w_logs_scroll.config(command=self.w_logs_text.yview)
+        self.w_logs_text.config(yscrollcommand=self.w_logs_scroll.set)
 
     def destroy(self):
-        """
-        обработчик закрытия программы
+        """обработчик закрытия программы
         """
         settings_write(
             DIR_START_LEFT=self.w_left_frame.var_current_path.get(),
@@ -89,20 +120,16 @@ class App(object):
         )
 
     def start(self):
-        """
-        запуск приложения
-        :return:
+        """запуск приложения
         """
         self.w_config()
         self.w_layout()
         self.w_window.mainloop()
 
-    def get_dir_stat(self, path, files=False):
-        """
-        рекурсивный сборщик статистики
+    def get_dir_stat(self, path: str, files: bool = False):
+        """рекурсивный сборщик статистики
         :param path:
         :param files:
-        :return:
         """
         # количество объектов в папка
         count = 0
@@ -191,9 +218,8 @@ class App(object):
         else:
             messagebox.showinfo('Compare', 'DONE')
 
-    def copy_file(self, frame, selected_file_name):
-        """
-        копирует файл из одного фрейма в другой
+    def copy_file(self, frame: CmpFrame, selected_file_name: str, ask_yes_no: bool = True):
+        """копирует файл из одного фрейма в другой
         """
         if frame == self.w_left_frame:
             src = os.path.join(self.w_left_frame.var_current_path.get(), selected_file_name)
@@ -204,25 +230,38 @@ class App(object):
         else:
             return
 
-        if messagebox.askyesno(
+        if ask_yes_no and not messagebox.askyesno(
             'Копирование',
             'Из\n{0}\nв\n{1}'.format(src, dst)
         ):
-            if os.path.exists(dst):
+            return
+
+        if os.path.exists(dst):
+            messagebox.showerror(
+                'Ошибка при копировании',
+                'Указанный файл уже существует\n'.format(dst)
+            )
+        else:
+            try:
+                shutil.copy2(src, dst)
+            except Exception as err:
                 messagebox.showerror(
                     'Ошибка при копировании',
-                    'Указанный файл уже существует\n'.format(dst)
+                    str(err)
                 )
-            else:
-                try:
-                    shutil.copy2(src, dst)
-                except Exception as err:
-                    messagebox.showerror(
-                        'Ошибка при копировании',
-                        str(err)
-                    )
-                else:
-                    frame.load_list()
+
+    def log(self, msg: str):
+        """выводим сообщение в лог
+        :param msg: сообщение
+        """
+        self.w_logs_text.insert(END, f'{msg}\n')
+        self.w_logs_text.see(END)
+
+    def log_clear(self):
+        """очистка лога
+        """
+        self.w_logs_text.delete('1.0', END)
+
 
 app = App()
 app.start()
